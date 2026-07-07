@@ -7,13 +7,14 @@ import {
 import {
   buildFrontendGithubAuthRedirect,
   buildFrontendGithubInstallRedirect,
+  buildGithubInstallReturnPath,
   completeGithubOauth,
   getGithubInstallStartUrl,
   getGithubOauthStartUrl,
   handleGithubWebhook,
   listGithubInstallationsForUser,
   listGithubRepositoriesForUser,
-  saveGithubInstallationFromCallback,
+  syncGithubInstallationForUser,
   verifyGithubWebhookSignature,
 } from "./github.service"
 import { signAppToken } from "../../lib/local-auth"
@@ -60,6 +61,32 @@ githubRouter.post("/install/start", authMiddleware, async (req, res) => {
   res.json({ url })
 })
 
+githubRouter.post("/installations/sync", authMiddleware, async (req, res) => {
+  const authReq = req as AuthenticatedRequest
+  const installationId =
+    typeof req.body?.installationId === "string" ? req.body.installationId : null
+
+  if (!installationId) {
+    return res.status(400).json({ error: "installationId is required." })
+  }
+
+  try {
+    const installation = await syncGithubInstallationForUser(
+      authReq.auth!.userId,
+      installationId
+    )
+
+    return res.json({ installation })
+  } catch (error) {
+    return res.status(400).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to sync GitHub installation.",
+    })
+  }
+})
+
 githubRouter.get("/install/callback", async (req, res) => {
   const state = typeof req.query.state === "string" ? req.query.state : null
   const installationId =
@@ -67,28 +94,22 @@ githubRouter.get("/install/callback", async (req, res) => {
       ? req.query.installation_id
       : null
 
-  if (!state || !installationId) {
+  if (!installationId) {
     return res.redirect(
       buildFrontendGithubInstallRedirect("/dashboard/new-project?github=error")
     )
   }
 
-  try {
-    const result = await saveGithubInstallationFromCallback({
-      state,
-      installationId,
-      setupAction:
-        typeof req.query.setup_action === "string"
-          ? req.query.setup_action
-          : undefined,
-    })
+  const returnPath = buildGithubInstallReturnPath({
+    state,
+    installationId,
+    setupAction:
+      typeof req.query.setup_action === "string"
+        ? req.query.setup_action
+        : undefined,
+  })
 
-    return res.redirect(buildFrontendGithubInstallRedirect(result.returnTo))
-  } catch {
-    return res.redirect(
-      buildFrontendGithubInstallRedirect("/dashboard/new-project?github=error")
-    )
-  }
+  return res.redirect(buildFrontendGithubInstallRedirect(returnPath))
 })
 
 export const githubWebhookRouter = Router()

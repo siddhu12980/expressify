@@ -9,10 +9,12 @@ datasource db {
 }
 
 enum DeploymentStatus {
+  QUEUED
   BUILDING
-  DEPLOYING
-  LIVE
-  FAILED
+  BUILD_FAILED
+  STARTING
+  RUNNING
+  RUNTIME_FAILED
 }
 
 enum GitHubInstallationStatus {
@@ -102,12 +104,15 @@ model ProjectEnvironmentVar {
 model Deployment {
   id         String           @id @default(cuid())
   projectId  String
-  status     DeploymentStatus @default(BUILDING)
+  status     DeploymentStatus @default(QUEUED)
   subdomain  String?          @unique
   branch     String
   commitSha  String?
   imageTag   String?
+  containerId String?
+  hostPort   Int?
   buildLogs  String?
+  runtimeLogs String?
   lastError  String?
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt

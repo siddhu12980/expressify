@@ -1,4 +1,6 @@
+import { decryptString, encryptString } from "../../lib/encryption"
 import { prisma } from "../../lib/prisma"
+import { deleteProjectDeployments } from "../deployments/deployments.service"
 
 type CreateProjectInput = {
   userId: string
@@ -83,5 +85,114 @@ export async function listProjects(userId: string) {
         take: 1,
       },
     },
+  })
+}
+
+export async function getProject(projectId: string, userId: string) {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      userId,
+    },
+    include: {
+      githubInstallation: true,
+      envVars: {
+        orderBy: { key: "asc" },
+      },
+      deployments: {
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  })
+
+  if (!project) {
+    return null
+  }
+
+  return {
+    ...project,
+    envVars: project.envVars.map((envVar) => ({
+      id: envVar.id,
+      key: envVar.key,
+      value: decryptString(envVar.encryptedValue),
+      createdAt: envVar.createdAt,
+      updatedAt: envVar.updatedAt,
+    })),
+  }
+}
+
+export async function updateProjectEnvVars(
+  projectId: string,
+  userId: string,
+  envVars: Array<{ key: string; value: string }>
+) {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      userId,
+    },
+  })
+
+  if (!project) {
+    throw new Error("Project not found.")
+  }
+
+  const cleanedEnvVars = envVars
+    .map((envVar) => ({
+      key: envVar.key.trim(),
+      value: envVar.value,
+    }))
+    .filter((envVar) => envVar.key.length > 0)
+
+  const seenKeys = new Set<string>()
+
+  for (const envVar of cleanedEnvVars) {
+    if (!/^[A-Z_][A-Z0-9_]*$/i.test(envVar.key)) {
+      throw new Error(`Invalid environment variable key: ${envVar.key}`)
+    }
+
+    const normalizedKey = envVar.key.toUpperCase()
+
+    if (seenKeys.has(normalizedKey)) {
+      throw new Error(`Duplicate environment variable key: ${envVar.key}`)
+    }
+
+    seenKeys.add(normalizedKey)
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.projectEnvironmentVar.deleteMany({
+      where: { projectId: project.id },
+    })
+
+    if (cleanedEnvVars.length > 0) {
+      await tx.projectEnvironmentVar.createMany({
+        data: cleanedEnvVars.map((envVar) => ({
+          projectId: project.id,
+          key: envVar.key,
+          encryptedValue: encryptString(envVar.value),
+        })),
+      })
+    }
+  })
+
+  return getProject(project.id, userId)
+}
+
+export async function deleteProject(projectId: string, userId: string) {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      userId,
+    },
+  })
+
+  if (!project) {
+    throw new Error("Project not found.")
+  }
+
+  await deleteProjectDeployments(project.id, userId)
+  await prisma.project.delete({
+    where: { id: project.id },
   })
 }

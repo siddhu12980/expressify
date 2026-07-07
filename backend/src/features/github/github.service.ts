@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken"
 
 import { prisma } from "../../lib/prisma"
-import { encryptString } from "../../lib/encryption"
+import { decryptString, encryptString } from "../../lib/encryption"
 
 type SignedStatePayload = {
   purpose: "github-oauth" | "github-install"
@@ -234,19 +234,9 @@ export function getGithubInstallStartUrl(userId: string, returnTo: string) {
   return `https://github.com/apps/${process.env.GITHUB_APP_SLUG}/installations/new?state=${encodeURIComponent(state)}`
 }
 
-export async function saveGithubInstallationFromCallback(input: {
-  state: string
-  installationId: string
-  setupAction?: string
-}) {
-  const parsedState = verifyState(input.state)
-
-  if (parsedState.purpose !== "github-install" || !parsedState.userId) {
-    throw new Error("Invalid GitHub installation state")
-  }
-
+async function fetchGithubInstallationDetails(installationId: string) {
   const installationResponse = await fetch(
-    `https://api.github.com/app/installations/${input.installationId}`,
+    `https://api.github.com/app/installations/${installationId}`,
     {
       headers: {
         Accept: "application/vnd.github+json",
@@ -259,18 +249,25 @@ export async function saveGithubInstallationFromCallback(input: {
     throw new Error("Unable to fetch installation details")
   }
 
-  const installation = (await installationResponse.json()) as {
+  return (await installationResponse.json()) as {
     id: number
     account: { login: string; type: string }
     target_type: string
     repository_selection: string
     permissions: Record<string, string>
   }
+}
 
-  const savedInstallation = await prisma.gitHubInstallation.upsert({
+async function saveGithubInstallationRecord(input: {
+  userId: string
+  installationId: string
+}) {
+  const installation = await fetchGithubInstallationDetails(input.installationId)
+
+  return prisma.gitHubInstallation.upsert({
     where: { githubInstallationId: String(installation.id) },
     update: {
-      userId: parsedState.userId,
+      userId: input.userId,
       githubAccountLogin: installation.account.login,
       githubAccountType: installation.account.type,
       targetType: installation.target_type,
@@ -281,7 +278,7 @@ export async function saveGithubInstallationFromCallback(input: {
       deletedAt: null,
     },
     create: {
-      userId: parsedState.userId,
+      userId: input.userId,
       githubInstallationId: String(installation.id),
       githubAccountLogin: installation.account.login,
       githubAccountType: installation.account.type,
@@ -291,10 +288,44 @@ export async function saveGithubInstallationFromCallback(input: {
       status: "ACTIVE",
     },
   })
+}
 
-  return {
-    returnTo: `${parsedState.returnTo}?github=connected&installation_id=${savedInstallation.githubInstallationId}`,
+function resolveGithubInstallReturnTo(state?: string | null) {
+  if (!state) {
+    return "/dashboard/new-project"
   }
+
+  try {
+    const parsedState = verifyState(state)
+
+    if (parsedState.purpose === "github-install") {
+      return parsedState.returnTo
+    }
+  } catch {}
+
+  return "/dashboard/new-project"
+}
+
+export function buildGithubInstallReturnPath(input: {
+  state?: string | null
+  installationId: string
+  setupAction?: string
+}) {
+  const returnTo = resolveGithubInstallReturnTo(input.state)
+  const [pathname, rawQuery = ""] = returnTo.split("?", 2)
+  const params = new URLSearchParams(rawQuery)
+
+  params.set(
+    "github",
+    input.setupAction === "update" ? "updated" : "connected"
+  )
+  params.set("installation_id", input.installationId)
+
+  if (input.setupAction) {
+    params.set("setup_action", input.setupAction)
+  }
+
+  return `${pathname}?${params.toString()}`
 }
 
 export async function listGithubInstallationsForUser(userId: string) {
@@ -375,6 +406,53 @@ export async function getActiveInstallationForUser(userId: string) {
     },
     orderBy: { createdAt: "desc" },
   })
+}
+
+export async function syncGithubInstallationForUser(
+  userId: string,
+  githubInstallationId: string
+) {
+  const githubAccount = await prisma.gitHubAccount.findUnique({
+    where: { userId },
+  })
+
+  if (!githubAccount?.encryptedAccessToken) {
+    throw new Error("Connect GitHub sign-in before syncing repository access.")
+  }
+
+  const userAccessToken = decryptString(githubAccount.encryptedAccessToken)
+  const installationsResponse = await fetch(
+    "https://api.github.com/user/installations?per_page=100",
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${userAccessToken}`,
+      },
+    }
+  )
+
+  if (!installationsResponse.ok) {
+    throw new Error("Unable to verify the GitHub installation for this user.")
+  }
+
+  const installationsData = (await installationsResponse.json()) as {
+    installations?: Array<{ id: number }>
+  }
+
+  const hasAccess = (installationsData.installations ?? []).some(
+    (installation) => String(installation.id) === githubInstallationId
+  )
+
+  if (!hasAccess) {
+    throw new Error("The selected GitHub installation is not available to this user.")
+  }
+
+  const installation = await saveGithubInstallationRecord({
+    userId,
+    installationId: githubInstallationId,
+  })
+
+  return installation
 }
 
 export async function handleGithubWebhook(input: {
