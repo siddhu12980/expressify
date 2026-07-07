@@ -12,11 +12,13 @@ const port = Number(process.env.PORT ?? 8080)
 
 import { authRouter } from "./features/auth/auth.routes"
 import { projectsRouter } from "./features/projects/projects.routes"
+import { githubRouter, githubWebhookRouter } from "./features/github/github.routes"
 
 
 
 export const app = express()
 
+app.use("/api/github/webhooks", express.raw({ type: "application/json" }), githubWebhookRouter)
 app.use(express.json())
 app.use(cors())
 
@@ -26,6 +28,7 @@ apiRouter.get("/health", (_req, res) => {
   res.json({ ok: true })
 })
 apiRouter.use("/auth", authRouter)
+apiRouter.use("/github", githubRouter)
 apiRouter.use("/projects", projectsRouter)
 
 app.use("/api", apiRouter)

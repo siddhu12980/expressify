@@ -1,8 +1,11 @@
 import { Router } from "express"
 
 import { loginUser, registerUser } from "./auth.service"
+import { githubAuthRouter } from "../github/github.routes"
 
 export const authRouter = Router()
+
+authRouter.use("/github", githubAuthRouter)
 
 function parseAuthBody(body: unknown) {
   const input = body as { email?: unknown; password?: unknown }

@@ -7,6 +7,8 @@ type CreateProjectInput = {
   repoName: string
   repoUrl: string
   branch: string
+  githubInstallationId?: string
+  githubRepositoryId?: string
 }
 
 function slugify(value: string) {
@@ -33,9 +35,33 @@ async function buildUniqueSlug(name: string) {
 export async function createProject(input: CreateProjectInput) {
   const slug = await buildUniqueSlug(input.name)
 
+  const installation = input.githubInstallationId
+    ? await prisma.gitHubInstallation.findFirst({
+        where: {
+          id: input.githubInstallationId,
+          userId: input.userId,
+          status: "ACTIVE",
+          deletedAt: null,
+        },
+      })
+    : await prisma.gitHubInstallation.findFirst({
+        where: {
+          userId: input.userId,
+          status: "ACTIVE",
+          deletedAt: null,
+        },
+        orderBy: { createdAt: "desc" },
+      })
+
+  if (!installation) {
+    throw new Error("Connect a GitHub installation before creating a project.")
+  }
+
   return prisma.project.create({
     data: {
       userId: input.userId,
+      githubInstallationId: installation.id,
+      githubRepositoryId: input.githubRepositoryId?.trim() || null,
       name: input.name.trim(),
       slug,
       repoOwner: input.repoOwner.trim(),
@@ -51,6 +77,7 @@ export async function listProjects(userId: string) {
     where: { userId },
     orderBy: { createdAt: "desc" },
     include: {
+      githubInstallation: true,
       deployments: {
         orderBy: { createdAt: "desc" },
         take: 1,

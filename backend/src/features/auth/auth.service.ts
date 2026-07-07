@@ -1,6 +1,6 @@
 import { prisma } from "../../lib/prisma"
-import { sign } from "jsonwebtoken"
 import { hashPassword, verifyPassword } from "../../lib/password"
+import { signAppToken } from "../../lib/local-auth"
 
 type AuthInput = {
   email: string
@@ -24,19 +24,28 @@ export async function registerUser(input: AuthInput) {
       email,
       passwordHash: await hashPassword(input.password),
     },
+    include: { githubAccount: true },
   })
 
   return {
-    token: sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET!),
-    user: { id: user.id, email: user.email },
+    token: signAppToken({ id: user.id, email: user.email }),
+    user: {
+      id: user.id,
+      email: user.email,
+      githubLogin: user.githubAccount?.githubLogin ?? null,
+      githubAvatarUrl: user.githubAccount?.githubAvatarUrl ?? null,
+    },
   }
 }
 
 export async function loginUser(input: AuthInput) {
   const email = normalizeEmail(input.email)
-  const user = await prisma.user.findUnique({ where: { email } })
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { githubAccount: true },
+  })
 
-  if (!user) {
+  if (!user || !user.passwordHash) {
     throw new Error("Invalid credentials")
   }
 
@@ -47,7 +56,17 @@ export async function loginUser(input: AuthInput) {
   }
 
   return {
-    token: sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET!),
-    user: { id: user.id, email: user.email },
+    token: signAppToken({
+      id: user.id,
+      email: user.email,
+      githubLogin: user.githubAccount?.githubLogin ?? null,
+      githubAvatarUrl: user.githubAccount?.githubAvatarUrl ?? null,
+    }),
+    user: {
+      id: user.id,
+      email: user.email,
+      githubLogin: user.githubAccount?.githubLogin ?? null,
+      githubAvatarUrl: user.githubAccount?.githubAvatarUrl ?? null,
+    },
   }
 }

@@ -21,9 +21,26 @@ export function authMiddleware(
   }
 
   const token = authHeader.slice("Bearer ".length)
-  const payload = jwt.verify(token, process.env.JWT_SECRET!)
-  req.auth = payload as { userId: string; email: string }
-  next()
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET!) as {
+      userId?: string
+      sub?: string
+      email?: string
+    }
+
+    if (!payload.email || (!payload.userId && !payload.sub)) {
+      return res.status(401).json({ error: "Unauthorized" })
+    }
+
+    req.auth = {
+      userId: payload.userId ?? payload.sub!,
+      email: payload.email,
+    }
+
+    next()
+  } catch {
+    return res.status(401).json({ error: "Unauthorized" })
+  }
 }
 
 export type { AuthenticatedRequest }

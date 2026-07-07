@@ -15,29 +15,73 @@ enum DeploymentStatus {
   FAILED
 }
 
+enum GitHubInstallationStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  projects     Project[]
+  id            String              @id @default(cuid())
+  email         String              @unique
+  passwordHash  String?
+  githubAccount GitHubAccount?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  projects      Project[]
+  installations GitHubInstallation[]
+}
+
+model GitHubAccount {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  githubUserId         String   @unique
+  githubLogin          String
+  githubAvatarUrl      String?
+  githubEmail          String?
+  encryptedAccessToken String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GitHubInstallation {
+  id                   String                   @id @default(cuid())
+  userId               String
+  githubInstallationId String                   @unique
+  githubAccountLogin   String
+  githubAccountType    String
+  targetType           String
+  repositoriesMode     String?
+  permissionsJson      String?
+  status               GitHubInstallationStatus @default(ACTIVE)
+  suspendedAt          DateTime?
+  deletedAt            DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects             Project[]
+
+  @@index([userId, status])
 }
 
 model Project {
-  id          String                   @id @default(cuid())
-  userId      String
-  name        String
-  slug        String                   @unique
-  repoOwner   String
-  repoName    String
-  repoUrl     String
-  branch      String
-  createdAt   DateTime                 @default(now())
-  updatedAt   DateTime                 @updatedAt
-  user        User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  envVars     ProjectEnvironmentVar[]
-  deployments Deployment[]
+  id                   String                   @id @default(cuid())
+  userId               String
+  githubInstallationId String?
+  githubRepositoryId   String?
+  name                 String
+  slug                 String                   @unique
+  repoOwner            String
+  repoName             String
+  repoUrl              String
+  branch               String
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  githubInstallation   GitHubInstallation?      @relation(fields: [githubInstallationId], references: [id], onDelete: SetNull)
+  envVars              ProjectEnvironmentVar[]
+  deployments          Deployment[]
 
   @@index([userId])
 }

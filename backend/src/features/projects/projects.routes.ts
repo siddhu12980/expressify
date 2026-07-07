@@ -17,6 +17,8 @@ function parseCreateProjectBody(body: unknown) {
     repoName?: unknown
     repoUrl?: unknown
     branch?: unknown
+    githubInstallationId?: unknown
+    githubRepositoryId?: unknown
   }
 
   if (
@@ -35,6 +37,14 @@ function parseCreateProjectBody(body: unknown) {
     repoName: input.repoName,
     repoUrl: input.repoUrl,
     branch: input.branch,
+    githubInstallationId:
+      typeof input.githubInstallationId === "string"
+        ? input.githubInstallationId
+        : undefined,
+    githubRepositoryId:
+      typeof input.githubRepositoryId === "string"
+        ? input.githubRepositoryId
+        : undefined,
   }
 }
 
@@ -56,10 +66,17 @@ projectsRouter.post("/", async (req, res) => {
     })
   }
 
-  const project = await createProject({
-    userId: authReq.auth!.userId,
-    ...input,
-  })
+  try {
+    const project = await createProject({
+      userId: authReq.auth!.userId,
+      ...input,
+    })
 
-  return res.status(201).json({ project })
+    return res.status(201).json({ project })
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to create project."
+
+    return res.status(400).json({ error: message })
+  }
 })
