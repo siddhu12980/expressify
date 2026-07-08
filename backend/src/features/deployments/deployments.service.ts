@@ -305,14 +305,15 @@ async function writeRuntimeEnvFile(
   envFilePath: string,
   envVars: Array<{ key: string; encryptedValue: string }>
 ) {
-  const lines = envVars.map((envVar) => {
-    const value = decryptString(envVar.encryptedValue).replace(/\n/g, "\\n")
-    return `${envVar.key}=${value}`
-  })
+  const lines = envVars
+    .filter((envVar) => envVar.key.trim().toUpperCase() !== "PORT")
+    .map((envVar) => {
+      const value = decryptString(envVar.encryptedValue).replace(/\n/g, "\\n")
+      return `${envVar.key}=${value}`
+    })
 
-  if (!lines.some((line) => line.startsWith("PORT="))) {
-    lines.push("PORT=3000")
-  }
+  // The local platform always publishes container port 3000.
+  lines.push("PORT=3000")
 
   await writeFile(envFilePath, `${lines.join("\n")}\n`, {
     encoding: "utf8",

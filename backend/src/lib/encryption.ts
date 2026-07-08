@@ -22,7 +22,7 @@ export function encryptString(value: string) {
 export function decryptString(value: string) {
   const [ivHex, tagHex, dataHex] = value.split(":")
 
-  if (!ivHex || !tagHex || !dataHex) {
+  if (!ivHex || !tagHex || dataHex === undefined) {
     throw new Error("Invalid encrypted token format")
   }
 
