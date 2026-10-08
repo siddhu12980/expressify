@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken"
 
 import { prisma } from "../../lib/prisma"
 import { decryptString, encryptString } from "../../lib/encryption"
+import { handleGithubPushDeployment } from "../deployments/deployments.service"
 
 type SignedStatePayload = {
   purpose: "github-oauth" | "github-install"
@@ -29,6 +30,26 @@ type InstallationRepository = {
   html_url: string
   default_branch: string
   owner: {
+    login: string
+  }
+}
+
+type GitHubPushPayload = {
+  ref: string
+  after: string
+
+  repository: {
+    id: number
+    name: string
+    full_name: string
+    default_branch: string
+  }
+
+  installation?: {
+    id: number
+  }
+
+  sender?: {
     login: string
   }
 }
@@ -527,6 +548,47 @@ export async function handleGithubWebhook(input: {
         repositoriesMode: installation.repository_selection ?? null,
       },
     })
+  }
+
+  if (input.event === "push") {
+
+    console.log("[github-push] event received", JSON.stringify(input.payload, null, 2))
+    const payload = input.payload as GitHubPushPayload
+  
+    const installationId = payload.installation?.id
+  
+    if (!installationId) {
+      return
+    }
+  
+    const branch = payload.ref.replace("refs/heads/", "")
+  
+    const project = await prisma.project.findFirst({
+      where: {
+        githubInstallation: {
+          githubInstallationId: String(installationId),
+        },
+        githubRepositoryId: String(payload.repository.id),
+      },
+    })
+  
+    if (!project) {
+      return
+    }
+  
+    if (project.branch !== branch) {
+      return
+    }
+  
+    await handleGithubPushDeployment({
+      projectId: project.id,
+      installationId: String(installationId),
+      repositoryId: String(payload.repository.id),
+      branch,
+      commitSha: payload.after,
+    })
+  
+    return
   }
 }
 

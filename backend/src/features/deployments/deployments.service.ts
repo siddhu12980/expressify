@@ -9,6 +9,8 @@ import { decryptString } from "../../lib/encryption"
 import { prisma } from "../../lib/prisma"
 import { createInstallationAccessToken } from "../github/github.service"
 
+import { deploymentQueue } from "../../lib/bullmq"
+
 const DEPLOYMENTS_ROOT = join(tmpdir(), "mini-vercel", "deployments")
 const LOG_LIMIT = 100_000
 
@@ -26,6 +28,14 @@ type CommandOptions = {
   onOutput?: (chunk: string) => void
 }
 
+type GitHubPushEventPayload = {
+  projectId: string
+  installationId: string
+  repositoryId: string
+  branch: string
+  commitSha: string
+}
+
 export async function startProjectDeployment(projectId: string, userId: string) {
   const project = await getProjectForDeployment(projectId, userId)
 
@@ -33,21 +43,77 @@ export async function startProjectDeployment(projectId: string, userId: string) 
     throw new Error("Project not found.")
   }
 
-  const deployment = await prisma.deployment.create({
-    data: {
-      projectId: project.id,
-      branch: project.branch,
-      status: "QUEUED",
-      imageTag: buildImageTag(project.id),
+  // const deployment = await prisma.deployment.create({
+  //   data: {
+  //     projectId: project.id,
+  //     branch: project.branch,
+  //     status: "QUEUED",
+  //     imageTag: buildImageTag(project.id),
+  //   },
+  // })
+
+  // setImmediate(() => {
+  //   void executeLocalDeployment(deployment.id)
+  // })
+
+  deploymentQueue.add('deployment-job', { projectId: project.id, userId: userId })
+
+  return {test: "test"}
+}
+
+export async function handleGithubPushDeployment(payload: GitHubPushEventPayload) {
+
+  //check if the cureent deployment is for the same branch and commit sha
+  const deployment = await prisma.deployment.findFirst({
+    where: {
+      projectId: payload.projectId,
+      branch: payload.branch,
+      commitSha: payload.commitSha,
     },
   })
+  
+  if (deployment) {
+    return
+  }
 
-  setImmediate(() => {
-    void executeLocalDeployment(deployment.id)
+  //check if the project is active
+  const project = await prisma.project.findFirst({
+    where: {
+      id: payload.projectId,
+      githubInstallation: {
+        githubInstallationId: payload.installationId,
+      },
+      githubRepositoryId: payload.repositoryId,
+      branch: payload.branch,
+    },  
   })
 
-  return deployment
+  if (!project) {
+    return
+  }
+
+  //create a new deployment
+  const newDeployment = await prisma.deployment.create({
+    data: {
+      projectId: payload.projectId,
+      branch: payload.branch,
+      commitSha: payload.commitSha,
+      status: "QUEUED",
+      imageTag: buildImageTag(payload.projectId),
+    },
+  })
+  
+  setImmediate(() => {
+    void executeLocalDeployment(newDeployment.id)
+  })
+  
+  return newDeployment
+
+
 }
+
+
+
 
 export async function deleteDeploymentForUser(
   deploymentId: string,

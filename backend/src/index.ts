@@ -22,11 +22,16 @@ app.use("/api/github/webhooks", express.raw({ type: "application/json" }), githu
 app.use(express.json())
 app.use(cors())
 
+app.get("/", (_req, res) => {
+  res.json({ ok: true })
+})
+
 const apiRouter = express.Router()
 
 apiRouter.get("/health", (_req, res) => {
   res.json({ ok: true })
 })
+
 apiRouter.use("/auth", authRouter)
 apiRouter.use("/github", githubRouter)
 apiRouter.use("/projects", projectsRouter)
