@@ -1,5 +1,30 @@
 {
-	"dependencies": {
-		"zustand": "^5.0.14"
-	}
+  "name": "mini-vercel",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "infra:up": "docker rm mini-vercel-redis mini-vercel-postgres 2>/dev/null; docker compose up",
+    "infra:down": "docker compose down",
+    "migrate": "pnpm --filter @mini-vercel/database db:migrate",
+    "generate": "pnpm --filter @mini-vercel/database db:generate",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint"
+  },
+  "devDependencies": {
+    "turbo": "latest",
+    "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "msgpackr-extract",
+      "prisma",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
 }
