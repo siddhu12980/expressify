@@ -8,6 +8,7 @@ const envFile = process.env.DOTENV_CONFIG_PATH ?? resolve(envDir, ".env")
 
 dotenv.config({ path: envFile })
 dotenv.config({ path: resolve(envDir, ".env.local"), override: true })
+
 const port = Number(process.env.PORT ?? 8080)
 
 import { authRouter } from "./features/auth/auth.routes"

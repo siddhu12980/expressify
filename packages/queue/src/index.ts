@@ -1,4 +1,4 @@
-import { Queue } from "bullmq"
+import { Queue,Job } from "bullmq"
 import type { ConnectionOptions } from "bullmq"
 
 export const QUEUE_NAME = "deployment-queue"
@@ -11,12 +11,15 @@ export const redisConnection: ConnectionOptions = {
 }
 
 export type DeploymentJobData = {
-  projectId: string
-  userId: string
+  deploymentId: string
+  cloneUrl: string
 }
 
 export { Queue } from "bullmq"
 export { Worker } from "bullmq"
+export {Job } from "bullmq"
+
+
 
 export const deploymentQueue = new Queue(QUEUE_NAME, {
   connection: redisConnection,

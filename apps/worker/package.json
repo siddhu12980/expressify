@@ -11,10 +11,11 @@
   "dependencies": {
     "@mini-vercel/crypto": "workspace:*",
     "@mini-vercel/database": "workspace:*",
-    "@mini-vercel/queue": "workspace:*"
+    "@mini-vercel/queue": "workspace:*",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "@types/node": "^26.6.4",
+    "@types/node": "^22",
     "tsx": "^4.23.15",
     "typescript": "^5"
   }

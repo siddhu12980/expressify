@@ -16,3 +16,10 @@ CLAUDE.md
 
 # Prisma generated client (run: npm run db:generate)
 packages/database/src/generated/
+packages/database/.env
+
+.firecrawl
+
+.turbo
+
+**/.turbo
